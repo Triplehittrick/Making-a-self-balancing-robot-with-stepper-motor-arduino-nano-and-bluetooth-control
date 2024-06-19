@@ -53,7 +53,8 @@ void timer_INI() {
   TCCR2A = 0;                                                               //Make sure that the TCCR2A register is set to zero
   TCCR2B = 0;                                                               //Make sure that the TCCR2A register is set to zero
   TCCR2B |= (1 << CS21);                                                    //Set the CS21 bit in the TCCRB register to set the prescaler to 8
-  OCR2A = 19;                                                               //The compare register is set to 39 => 20us / (1s / (16.000.000Hz / 8)) - 1
+  OCR2A = 19;   //change this to change the number of pulse nercessary in one timer     
+//The compare register is set to 39 => 20us / (1s / (16.000.000Hz / 8)) - 1
   TCCR2A |= (1 << WGM21);                                                   //Set counter 2 to CTC (clear timer on compare) mode Chế độ CTC bộ đếm được xóa về 0 khi giá trị bộ đếm (TCNT0) khớp với OCR0A
   TIMSK2 |= (1 << OCIE2A);                                                  //Set the interupt enable bit OCIE2A in the TIMSK2 register
 }
