@@ -1,40 +1,34 @@
 #include "stmpu6050.h"
+#include <SimpleKalmanFilter.h>
+#include <SoftwareSerial.h>
+SoftwareSerial BTSerial(0,1); //define RX, TX
+
 SMPU6050 mpu6050;
+SimpleKalmanFilter simpleKalmanFilter(2, 2, 0.01);
+
+// Serial output refresh time
+const long SERIAL_REFRESH_TIME = 5;
+long refresh_time;
 
 
-
-// PINMAP
+// ĐỊNH NGHĨA CHÂN CNC SHIELD V4
 //                chân ARDUINO   ký hiệu trên          chân PORT AVR
 //                             board Arduino nano       Atmega 328P
-# define Enable       8            //D8                 //PORTB 0                    
+# define Enable       8            //D8                 //PORTB 0                  
 # define Step_3       7            //D7                 //PORTD 7                    
-# define Step_2       6            //D6                 //PORTD 6                    
-# define Step_1       5            //D5                 //PORTD 5                    
+# define Step_2       6            //D6                 //PORTD 6                                       
 # define Dir_3        4            //D4                 //PORTD 4                    
 # define Dir_2        3            //D3                 //PORTD 3                    
-# define Dir_1        2            //D2                 //PORTD 2  
-# define MS3          9            //D9                 //PORTB 1 
-# define MS2          10           //D10                //PORTB 2 
-# define MS1          11           //D11                //PORTB 3 
-
 
 //     HÀM KHAI BÁO CÁC CHÂN ARDUINO NANO
 //....................................
 void  pin_INI() {
   pinMode(Enable, OUTPUT);
-  pinMode(Step_1, OUTPUT);
   pinMode(Step_2, OUTPUT);
   pinMode(Step_3, OUTPUT);
-  pinMode(Dir_1, OUTPUT);
   pinMode(Dir_2, OUTPUT);
   pinMode(Dir_3, OUTPUT);
-  pinMode(MS1, OUTPUT);
-  pinMode(MS2, OUTPUT);
-  pinMode(MS3, OUTPUT);
   digitalWrite(Enable, LOW);
-  digitalWrite(MS1, LOW);
-  digitalWrite(MS2, HIGH);
-  digitalWrite(MS3, LOW);
 }
 
 
@@ -62,17 +56,15 @@ volatile int32_t Step1, Step2, Step3;
 int16_t Count_TOP1, Count_BOT1, Count_TOP2, Count_BOT2, Count_TOP3, Count_BOT3;  //vị trí cuối của phần cao và cuối phần thấp trong 1 chu kỳ xung STEP
 float Input_L, Input_R, Output, I_L, I_R, Input_lastL, Input_lastR, Output_L, Output_R, M_L, M_R, Motor_L, Motor_R;
 
+// PID 35 12 3.5
 float Kp = 35;
-float Ki = 10;//6.5
-float Kd = 2.7;
+float Ki = 12;
+float Kd = 3.5;
 
 float  Offset = 0.5;
-float    Vgo = 0;
-float    Vgo_L = 0;
-float    Vgo_R = 0;
-
-
-
+float  Vgo = 0;
+float  Vgo_L = 0;
+float  Vgo_R = 0;
 
 char Bluetooth;
 unsigned long loop_timer;
@@ -173,62 +165,53 @@ void Speed_R(int16_t x) {
 }
 
 
-
 //////////////////////////////////////////////////          SETUP          /////////////////////////////////////////////////////////////////
 void setup() {
   mpu6050.init(0x68);
-  Serial.begin(9600);               //Khai báo Serial
+  Serial.begin(115200);               //Khai báo Serial
   pin_INI();                        //Khai báo PIN Arduino đấu nối 3 DRIVER A4988
   timer_INI();                      //Khai báo TIMER2
-  delay(500);
+  delay(200);
   loop_timer = micros() + 4000;
+  BTSerial.begin(9600);
+  //Tách ra thành hai chương trình cân bằng và điều khiển có baudrate khác nhau nhằm tránh xung đột
 }
 
 
 //////////////////////////////////////////////////          LOOP          /////////////////////////////////////////////////////////////////
 void loop() {
+  //BLUETOOTH_MODE
+  RC_BLUETOOTH();
+
   float AngleY = mpu6050.getYAngle();
-  //Hiển thị góc nghiêng thực
-  //Serial.println(AngleY);
-
-  if (Serial.available() > 0) {
-
-    Bluetooth = Serial.read();
-
+  //Kalman Filter
+  float measured_value = AngleY;
+  float estimated_value = simpleKalmanFilter.updateEstimate(measured_value);
+  
+  if (millis() > refresh_time) {
+    Serial.print(measured_value,2);
+    Serial.print(",");
+    Serial.print(estimated_value,2);
+    Serial.println();
+    
+    refresh_time = millis() + SERIAL_REFRESH_TIME;
   }
-  if (Bluetooth == 'g') { //go
-    if (Vgo < 3)Vgo += 1;
-    if ((Output_L || Output_R) > 150)Vgo -= 0.01;//Vgo đại diện cho tốc độ di chuyển tịnh tiến của robot
-    Vgo_L = Vgo_R = 0;
-  }
-
-  else if (Bluetooth == 'b') { //back
-    if (Vgo > -3)Vgo -= 1;
-    if ((Output_L || Output_R) < - 150)Vgo += 0.01;
-    Vgo_L = Vgo_R = 0;
-  }
-
-  else if (Bluetooth == 'l') { //left
-    if (Vgo_L > -0.1)Vgo_L -= 0.03;
-    if (Vgo_R < 0.1)Vgo_R += 0.03;
-  }
-
-  else if (Bluetooth == 'r') { //right
-    if (Vgo_L < 0.1)Vgo_L += 0.03;
-    if (Vgo_R >- 0.1)Vgo_R -= 0.03;
-  }
-
-  else if (Bluetooth == 's') { //stop
-    Vgo = Vgo_R = Vgo_L = 0;
-    Output_L = Output_R =0;
-  }
+  Input_lastL = Input_lastR = estimated_value;
+  
+  //Hiển thị góc nghiêng thực trên serial plotter
+  //Serial.print(measured_value);
+  Serial.println(measured_value);
+  //Serial.print(estimated_value);
+  Serial.println(estimated_value);
+  
+  
 
   //Dùng PID cho MOTOR_L
   Input_L = AngleY + Offset - Vgo - Vgo_L;                             //Vgo<0  chạy lui,Vgo >0 chạy tới
   I_L += Input_L * Ki;
   I_L = constrain(I_L, -400, 400);
 
-  Output_L = Kp * Input_L + I_L + Kd * (Input_L - Input_lastL);
+  Output_L = Kp * Input_L + I_L + Kd * (Input_L - Input_lastL) ;
   Input_lastL = Input_L;                                           //Lưu làm độ lệch trước cho vòng loop sau
 
   //Khống chế OUTPUT theo sự phi tuyến MOTOR_L
@@ -276,7 +259,7 @@ void loop() {
   //cho 2 MOTOR chạy
   Speed_L(Motor_L);
   Speed_R(Motor_R);
-
+  
   while (loop_timer > micros());
   loop_timer += 4000;
 }
