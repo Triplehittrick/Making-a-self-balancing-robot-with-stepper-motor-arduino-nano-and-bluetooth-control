@@ -1,0 +1,47 @@
+//BLUETOOTH_MODE
+void RC_BLUETOOTH()
+{
+  if (Serial.available() > 0) {
+
+    Bluetooth = BTSerial.read();//phân biệt với baud hệ thống
+
+  }
+  if (Bluetooth == 'g') { //go
+    if (Vgo < 4)Vgo += 3.5;
+    if (((Output_L || Output_R ) > 80 )|| Vgo > 4)Vgo -= 0.05;
+    Vgo_L = Vgo_R = 0;
+  }
+  else if (Bluetooth == 't') { //boost
+    if (Vgo < 4.5)Vgo += 4;
+    if ((Output_L || Output_R) > 100 || Vgo > 4.5)Vgo -= 0.1;
+    Vgo_L = Vgo_R = 0;
+  } 
+
+  else if (Bluetooth == 'b') { //back
+    if (Vgo > -4)Vgo -= 3.5;
+    if (((Output_L || Output_R) < - 80 ) || Vgo > 4)Vgo += 0.05;
+    Vgo_L = Vgo_R = 0;
+  }
+
+  else if (Bluetooth == 'l') { //left
+    if (Vgo_L > -0.5005)Vgo_L += 0.5;//+=
+    if (Vgo_R < 0.5005)Vgo_R -= 0.5;//-=
+  }
+
+  else if (Bluetooth == 'r') { //right
+    if (Vgo_L < 0.5005)Vgo_L -= 0.5;//-=
+    if (Vgo_R >- 0.5005)Vgo_R += 0.5;//+=
+  }
+    else if (Bluetooth == '1') { //square
+    if (Vgo_L > -0.5005)Vgo_L += 0.5;//+=
+  }
+
+  else if (Bluetooth == '2') { //circle
+    if (Vgo_R >- 0.5005)Vgo_R += 0.5;//+=
+  }
+
+  else if (Bluetooth == 's') { //stop
+    if (Vgo !=0 || Vgo_L !=0 || Vgo_R !=0)Vgo = Vgo_R = Vgo_L = 0;
+  }
+
+}
